@@ -5,6 +5,7 @@
 library(Matrix)
 library(tidyverse)
 library(data.table)
+library(wbstats)
 
 rm(list=ls()); gc()
 
@@ -133,6 +134,14 @@ results <- results %>%
   group_by(code, iso3c, country, group) %>% 
   summarize(landuse = sum(landuse), ghg = sum(ghg), water = sum(water), consumption = sum(consumption))
 
-write_csv(results, "output/results.csv")
+data <- wbstats::wb(indicator = c("SP.POP.TOTL", "SP.URB.TOTL.IN.ZS", "NY.GDP.MKTP.CD", "NY.GDP.MKTP.PP.CD"), 
+                    startdate = year-1, enddate = year+1) %>% 
+  group_by(iso3c, indicator) %>% 
+  summarize(value = mean(value)) %>% 
+  spread(indicator, value)
 
+results <- cbind(results, data[,2:5][match(results$iso3c, data$iso3c),])
+
+write_csv(results, "output/results.csv")
+# results <- read_csv("output/results.csv")
 
