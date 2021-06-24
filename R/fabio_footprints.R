@@ -64,7 +64,7 @@ footprint <- function(country = "EU27", extension = "landuse", allocation = "val
 #-------------------------------------------------------------------------
 allocations = c("mass","value")
 years <- c(1987, 2012)
-year <- 2012
+year <- years[1]
 
 # Read data
 Xi <- as.vector(X[, as.character(year-1)] + X[, as.character(year)] + X[, as.character(year+1)]) / 3
@@ -128,7 +128,7 @@ for(country in countries){
 
 results$consumption <- round(as.vector(t(agg(t(Yi)))))
 
-write_csv(results, "output/results_full.csv")
+write_csv(results, paste0("output/results_full_",year,".csv"))
 
 results <- results %>% 
   group_by(code, iso3c, country, group) %>% 
@@ -142,6 +142,6 @@ data <- wbstats::wb(indicator = c("SP.POP.TOTL", "SP.URB.TOTL.IN.ZS", "NY.GDP.MK
 
 results <- cbind(results, data[,2:5][match(results$iso3c, data$iso3c),])
 
-write_csv(results, "output/results.csv")
-# results <- read_csv("output/results.csv")
+write_csv(results, paste0("output/results_",year,".csv"))
+# results <- paste0(read_csv("output/results_",year,".csv"))
 
