@@ -24,13 +24,16 @@ items_ghg <- read.csv("./input/items.csv")
 items_ghg <- rep(items_ghg$item_code, 192)
 nrreg <- nrow(regions)
 nrcom <- nrow(items)
+others <- "Vegetables, fruit, nuts, pulses, oilseeds, others"
 index <- data.table(code = rep(regions$code, each = nrcom),
   iso3c = rep(regions$iso3c, each = nrcom),
   country = rep(regions$name, each = nrcom),
   item = rep(items$item, nrreg),
-  group = c(rep("veg", 52), rep("nonfood",11), rep("veg", 27), rep("alc",4), rep("nonfood",15), 
-  "dairy", "dairy", "eggs", "nonfood", "bovine meat", "mutton & goat meat", "pigmeat", 
-  "poultry meat", "meat, other", "offals, edible", "fats, animals", rep("nonfood", 4), "fish, seafood"))
+  # group = c(rep("veg", 52), rep("nonfood",11), rep("veg", 27), rep("alc",4), rep("nonfood",15),
+  group = c(items$comm_group[1:14], rep(others, 30), items$comm_group[45:47], rep(others, 5), 
+            rep("nonfood",10), rep(others, 2), items$comm_group[65:81], rep("nonfood",9), 
+            rep("alc",4), rep("nonfood",15), "dairy", "dairy", "eggs", "nonfood", 
+            rep("meat", 7), rep("nonfood", 4), "fish, seafood"))
 
 X <- readRDS(file=paste0("/mnt/nfs_fineprint/tmp/fabio/v2/X.rds"))
 Y <- readRDS(file=paste0("/mnt/nfs_fineprint/tmp/fabio/v2/Y.rds"))
@@ -77,33 +80,26 @@ Ei$biomass <- (Ei$biomass + Eiminus1$biomass + Eiplus1$biomass) / 3
 Ei$blue <- (Ei$blue + Eiminus1$blue + Eiplus1$blue) / 3
 Ei$green <- (Ei$green + Eiminus1$green + Eiplus1$green) / 3
 
-load(paste0("/mnt/nfs_fineprint/tmp/fabio/ghg/E_ghg_",year-1,".RData"))
-emissions <- rowSums(t(E_ghg[,-1]))
-load(paste0("/mnt/nfs_fineprint/tmp/fabio/ghg/E_ghg_",year,".RData"))
-emissions <- emissions + rowSums(t(E_ghg[,-1]))
-load(paste0("/mnt/nfs_fineprint/tmp/fabio/ghg/E_ghg_",year+1,".RData"))
-emissions <- emissions + rowSums(t(E_ghg[,-1]))
-emissions <- emissions / 3
-
-load(paste0("/mnt/nfs_fineprint/tmp/fabio/ghg/E_luh2_",year-1,".RData"))
-emissions_luc <- rowSums(t(E_luh2[c(2,7),-1]))
-load(paste0("/mnt/nfs_fineprint/tmp/fabio/ghg/E_luh2_",year,".RData"))
-emissions_luc <- emissions_luc + rowSums(t(E_luh2[c(2,7),-1]))
-load(paste0("/mnt/nfs_fineprint/tmp/fabio/ghg/E_luh2_",year+1,".RData"))
-emissions_luc <- emissions_luc + rowSums(t(E_luh2[c(2,7),-1]))
-emissions_luc <- emissions_luc / 3
-
-Ei$ghg <- (emissions + emissions_luc)[items_ghg %in% items$item_code]
+# items_ghg <- read_csv("/mnt/nfs_fineprint/tmp/fabio/ghg/items_ghg.csv")
+# items_luh2 <- read_csv("/mnt/nfs_fineprint/tmp/fabio/ghg/items_luh2.csv")
+ghg <- readRDS("/mnt/nfs_fineprint/tmp/fabio/ghg/E_ghg_mass.rds")
+luh2 <- readRDS("/mnt/nfs_fineprint/tmp/fabio/ghg/E_luh2_mass.rds")
+Ei$ghg <- (colSums(ghg[[as.character(year-1)]]) + 
+  colSums(ghg[[as.character(year)]]) + colSums(ghg[[as.character(year-1)]])) / 3
+Ei$luh2 <- (colSums(luh2[[as.character(year-1)]][1:2,]) + 
+  colSums(luh2[[as.character(year)]][1:2,]) + colSums(luh2[[as.character(year-1)]][1:2,])) / 3
 Ei$water <- (Ei$blue + Ei$green)
+Ei[, cropland := ifelse(item == "Grazing", 0, landuse)]
+Ei[, grazing := ifelse(item == "Grazing", landuse, 0)]
 
 Y_codes <- data.frame(code = substr(colnames(Yi), 1, str_locate(colnames(Yi), "_")[,1]-1))
 Y_codes$iso3c = regions$iso3c[match(Y_codes$code,regions$code)]
 Y_codes$continent = regions$continent[match(Y_codes$iso3c,regions$iso3c)]
 Y_codes$fd <- substr(colnames(Yi), str_locate(colnames(Yi), "_")[,1]+1, 100)
 
-extensions <- colnames(Ei)[c(8,12,13)]
+extensions <- colnames(Ei)[12:16]
 colnames(Yi) <- Y_codes$iso3c
-Yi <- Yi[, Y_codes$fd != "other"]
+Yi <- Yi[, Y_codes$fd %in% c("food", "losses")]
 Yi <- agg(Yi)
 
 allocation = "mass"
@@ -116,9 +112,19 @@ countries <- colnames(Yi)
 country <- "ITA"
 extension = "landuse"
 
-results <- data.frame(index, landuse = 0, ghg = 0, water = 0)
+cbs <- readRDS("/mnt/nfs_fineprint/tmp/fabio/v2/data/tidy/cbs_tidy.rds")
+countries <- regions[code %in% unique(cbs$area_code[cbs$year==1986]) & 
+  code %in% unique(cbs$area_code[cbs$year==1987]) & 
+  code %in% unique(cbs$area_code[cbs$year==1988]) & 
+  code %in% unique(cbs$area_code[cbs$year==2011]) & 
+  code %in% unique(cbs$area_code[cbs$year==2012]) & 
+  code %in% unique(cbs$area_code[cbs$year==2013]) &
+  countries %in% iso3c & iso3c != "TWN", iso3c]
+
+results <- data.frame(index, ghg = 0, luh2 = 0, water = 0, cropland = 0, grazing = 0)
 
 for(country in countries){
+  print(paste(match(country, countries), "/", length(countries)))
   for(extension in extensions){
     # calculate footprints
     data <- footprint(country = country, extension = extension, allocation = allocation)
@@ -133,7 +139,8 @@ write_csv(results, paste0("output/results_full_",year,".csv"))
 
 results <- results %>% 
   group_by(code, iso3c, country, group) %>% 
-  summarize(landuse = sum(landuse), ghg = sum(ghg), water = sum(water), consumption = sum(consumption))
+  summarize(ghg = sum(ghg), luh2 = sum(luh2), water = sum(water), 
+            cropland = sum(cropland), grazing = sum(grazing), consumption = sum(consumption))
 
 data <- wbstats::wb(indicator = c("SP.POP.TOTL", "SP.URB.TOTL.IN.ZS", "NY.GDP.MKTP.CD", "NY.GDP.MKTP.PP.CD"), 
                     startdate = year-1, enddate = year+1) %>% 
@@ -142,6 +149,8 @@ data <- wbstats::wb(indicator = c("SP.POP.TOTL", "SP.URB.TOTL.IN.ZS", "NY.GDP.MK
   spread(indicator, value)
 
 results <- bind_cols(results, data[match(results$iso3c, data$iso3c),-1])
+
+results <- results[results$iso3c %in% countries,]
 
 write_csv(results, paste0("output/results_",year,".csv"))
 # results <- read_csv(paste0("output/results_",year,".csv"))
